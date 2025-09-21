@@ -15,11 +15,11 @@ class LocalDataSource {
     String path = join(await getDatabasesPath(), 'wishlist.db');
     return await openDatabase(
       path,
-      version: 2, // Incremented version for schema upgrade
+      version: 3, // Incremented version to fix schema issues
       onCreate: (db, version) async {
         // Create wishlist table
         await db.execute('''
-          CREATE TABLE wishlist (
+          CREATE TABLE IF NOT EXISTS wishlist (
             id TEXT PRIMARY KEY,
             title TEXT,
             subtitle TEXT,
@@ -32,7 +32,7 @@ class LocalDataSource {
         ''');
         // Create products table
         await db.execute('''
-          CREATE TABLE products (
+          CREATE TABLE IF NOT EXISTS products (
             id TEXT PRIMARY KEY,
             title TEXT,
             subtitle TEXT,
@@ -45,10 +45,23 @@ class LocalDataSource {
         ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 2) {
-          // Add products table for existing databases
+        // Handle all upgrades safely
+        if (oldVersion < 3) {
+          // Create tables if they don't exist
           await db.execute('''
-            CREATE TABLE products (
+            CREATE TABLE IF NOT EXISTS wishlist (
+              id TEXT PRIMARY KEY,
+              title TEXT,
+              subtitle TEXT,
+              price REAL,
+              imageUrl TEXT,
+              description TEXT,
+              category TEXT,
+              rating REAL
+            )
+          ''');
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS products (
               id TEXT PRIMARY KEY,
               title TEXT,
               subtitle TEXT,
@@ -101,16 +114,18 @@ class LocalDataSource {
     try {
       final db = await database;
       final maps = await db.query('wishlist');
-      return maps.map((map) => Product(
-            id: map['id'] as String,
-            title: map['title'] as String,
-            subtitle: map['subtitle'] as String,
-            price: map['price'] as double,
-            imageUrl: map['imageUrl'] as String,
-            description: map['description'] as String,
-            category: map['category'] as String,
-            rating: map['rating'] as double,
-          )).toList();
+      return maps
+          .map((map) => Product(
+                id: map['id'] as String,
+                title: map['title'] as String,
+                subtitle: map['subtitle'] as String,
+                price: map['price'] as double,
+                imageUrl: map['imageUrl'] as String,
+                description: map['description'] as String,
+                category: map['category'] as String,
+                rating: map['rating'] as double,
+              ))
+          .toList();
     } catch (e) {
       print('Error getting wishlist: $e');
       return [];
@@ -130,27 +145,35 @@ class LocalDataSource {
   Future<void> cacheProducts(List<Product> products) async {
     try {
       final db = await database;
-      await db.delete('products'); // Clear existing products
-      for (var product in products) {
-        await db.insert(
-          'products',
-          {
-            'id': product.id,
-            'title': product.title,
-            'subtitle': product.subtitle,
-            'price': product.price,
-            'imageUrl': product.imageUrl,
-            'description': product.description,
-            'category': product.category,
-            'rating': product.rating,
-          },
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
-      }
-      print('Cached ${products.length} products');
+
+      // Use transaction for better performance and atomicity
+      await db.transaction((txn) async {
+        // Clear existing products
+        await txn.delete('products');
+
+        // Insert new products
+        for (var product in products) {
+          await txn.insert(
+            'products',
+            {
+              'id': product.id,
+              'title': product.title,
+              'subtitle': product.subtitle,
+              'price': product.price,
+              'imageUrl': product.imageUrl,
+              'description': product.description,
+              'category': product.category,
+              'rating': product.rating,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      });
+
+      print('Successfully cached ${products.length} products');
     } catch (e) {
       print('Error caching products: $e');
-      rethrow;
+      // Don't rethrow - caching failure shouldn't break the app
     }
   }
 
@@ -158,16 +181,20 @@ class LocalDataSource {
     try {
       final db = await database;
       final maps = await db.query('products');
-      return maps.map((map) => Product(
-            id: map['id'] as String,
-            title: map['title'] as String,
-            subtitle: map['subtitle'] as String,
-            price: map['price'] as double,
-            imageUrl: map['imageUrl'] as String,
-            description: map['description'] as String,
-            category: map['category'] as String,
-            rating: map['rating'] as double,
-          )).toList();
+      final products = maps
+          .map((map) => Product(
+                id: map['id'] as String,
+                title: map['title'] as String,
+                subtitle: map['subtitle'] as String,
+                price: map['price'] as double,
+                imageUrl: map['imageUrl'] as String,
+                description: map['description'] as String,
+                category: map['category'] as String,
+                rating: map['rating'] as double,
+              ))
+          .toList();
+      print('Retrieved ${products.length} cached products');
+      return products;
     } catch (e) {
       print('Error getting cached products: $e');
       return [];

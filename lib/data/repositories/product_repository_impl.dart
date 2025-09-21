@@ -13,27 +13,27 @@ class ProductRepositoryImpl implements ProductRepository {
 
   @override
   Future<List<Product>> getProducts() async {
-    // Check connectivity
-    final connectivityResult = await Connectivity().checkConnectivity();
-    final isOffline = connectivityResult == ConnectivityResult.none;
+    try {
+      // Always try to fetch from API first
+      final products = await remoteDataSource.fetchProducts();
 
-    if (!isOffline) {
-      try {
-        // Try fetching from API
-        final products = await remoteDataSource.fetchProducts();
-        // Cache products locally
-        await localDataSource.cacheProducts(products);
-        return products;
-      } catch (e) {
-        print('API fetch error: $e');
-        // Fall back to cached products
-        final cachedProducts = await localDataSource.getCachedProducts();
-        return cachedProducts; // Return empty list if cache is empty
-      }
-    } else {
-      // Offline: return cached products
+      // Cache products locally for offline use
+      await localDataSource.cacheProducts(products);
+
+      return products;
+    } catch (e) {
+      print('API fetch failed, trying cached products: $e');
+
+      // If API fails, try to get cached products
       final cachedProducts = await localDataSource.getCachedProducts();
-      return cachedProducts; // Return empty list if cache is empty
+
+      if (cachedProducts.isNotEmpty) {
+        return cachedProducts;
+      }
+
+      // If no cached products, throw error
+      throw Exception(
+          'Unable to load products. Please check your internet connection.');
     }
   }
 }

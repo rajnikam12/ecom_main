@@ -6,36 +6,34 @@ import '../../../domain/use_cases/fetch_products.dart';
 part 'product_event.dart';
 part 'product_state.dart';
 
-// Manages product fetching and search, syncing with wishlist
 class ProductBloc extends Bloc<ProductEvent, ProductState> {
   final FetchProducts fetchProducts;
 
   ProductBloc(this.fetchProducts) : super(ProductInitial()) {
-    // Fetch products from API or cache
     on<FetchProductsEvent>((event, emit) async {
       emit(ProductLoading());
       try {
         final products = await fetchProducts();
-        if (products.isEmpty) {
-          emit(
-              const ProductError('Offline mode: No cached products available'));
-        } else {
-          emit(ProductLoaded(products, event.wishlist ?? []));
-        }
+        emit(ProductLoaded(products, event.wishlist ?? []));
       } catch (e) {
-        emit(ProductError(e.toString()));
+        emit(ProductError(
+            'Unable to load products. Please check your internet connection and try again.'));
       }
     });
 
-    // Filter products by search query
     on<SearchProductsEvent>((event, emit) async {
       if (state is ProductLoaded) {
         final currentState = state as ProductLoaded;
-        final filtered = currentState.allProducts
-            .where((p) =>
-                p.title.toLowerCase().contains(event.query.toLowerCase()))
-            .toList();
-        emit(ProductLoaded(filtered, currentState.wishlist));
+        if (event.query.isEmpty) {
+          emit(ProductLoaded(currentState.allProducts, currentState.wishlist));
+        } else {
+          final filtered = currentState.allProducts
+              .where((p) =>
+                  p.title.toLowerCase().contains(event.query.toLowerCase()) ||
+                  p.category.toLowerCase().contains(event.query.toLowerCase()))
+              .toList();
+          emit(ProductLoaded(filtered, currentState.wishlist));
+        }
       }
     });
   }

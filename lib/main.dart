@@ -13,7 +13,6 @@ import 'data/data_sources/local_data_source.dart';
 import 'data/repositories/wishlist_repository_impl.dart';
 import 'presentation/blocs/wishlist/wishlist_bloc.dart';
 
-// App entry point with Bloc providers
 void main() {
   runApp(const MyApp());
 }
@@ -25,15 +24,18 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider(
-            create: (_) =>
-                RemoteDataSource(http.Client())), // Added http.Client
+        Provider(create: (_) => RemoteDataSource(http.Client())),
         Provider(create: (_) => LocalDataSource()),
       ],
       child: MultiBlocProvider(
         providers: [
           BlocProvider(
-            create: (context) => ThemeBloc()..add( LoadThemeEvent()),
+            create: (context) => ThemeBloc()..add(LoadThemeEvent()),
+          ),
+          BlocProvider(
+            create: (context) => WishlistBloc(
+              WishlistRepositoryImpl(context.read<LocalDataSource>()),
+            )..add(const LoadWishlistEvent()),
           ),
           BlocProvider(
             create: (context) => ProductBloc(
@@ -43,12 +45,7 @@ class MyApp extends StatelessWidget {
                   context.read<LocalDataSource>(),
                 ),
               ),
-            ),
-          ),
-          BlocProvider(
-            create: (context) => WishlistBloc(
-              WishlistRepositoryImpl(context.read<LocalDataSource>()),
-            )..add(const LoadWishlistEvent()),
+            )..add(const FetchProductsEvent()), // Auto-load products
           ),
         ],
         child: BlocBuilder<ThemeBloc, ThemeState>(

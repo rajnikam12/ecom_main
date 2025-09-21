@@ -10,7 +10,6 @@ import '../widgets/home/product_card.dart';
 import 'product_details.dart';
 import 'wishlist_page.dart';
 
-// Displays product grid with search, categories, pull-to-refresh, and offline support
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -21,35 +20,63 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String selectedCategory = "All";
 
-  // Determines grid columns for responsiveness
+  // Responsive design calculations
   int _calculateCrossAxisCount(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    return width > 600 ? 4 : 2;
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth > 1200) return 6; // Large tablets/desktop
+    if (screenWidth > 900) return 4; // Medium tablets
+    if (screenWidth > 600) return 3; // Small tablets
+    return 2; // Mobile phones
+  }
+
+  double _calculateChildAspectRatio(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth > 900) return 0.75; // Tablets - more square
+    return 0.65; // Mobile - more rectangular
+  }
+
+  double _getHorizontalPadding(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth > 1200) return 32.0;
+    if (screenWidth > 600) return 24.0;
+    return 16.0;
+  }
+
+  double _getGridSpacing(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth > 900) return 16.0;
+    return 12.0;
   }
 
   @override
   void initState() {
     super.initState();
-    // Fetch products and load wishlist for sync
-    context.read<ProductBloc>().add(FetchProductsEvent(
-        wishlist: context.read<WishlistBloc>().state is WishlistLoaded
-            ? (context.read<WishlistBloc>().state as WishlistLoaded).wishlist
-            : []));
-    context.read<WishlistBloc>().add(LoadWishlistEvent());
+    context.read<WishlistBloc>().add(const LoadWishlistEvent());
+    _loadProducts();
+  }
+
+  void _loadProducts() {
+    final wishlistState = context.read<WishlistBloc>().state;
+    final wishlist =
+        wishlistState is WishlistLoaded ? wishlistState.wishlist : <Product>[];
+    context.read<ProductBloc>().add(FetchProductsEvent(wishlist: wishlist));
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isTablet = screenWidth > 600;
 
     return Scaffold(
       appBar: AppBar(
         elevation: 0,
+        centerTitle: !isTablet, // Center on mobile, left-align on tablet
         title: Text(
           "Ecommerce",
           style: theme.textTheme.headlineLarge?.copyWith(
             fontWeight: FontWeight.bold,
-            fontSize: 28,
+            fontSize: isTablet ? 32 : 28,
             letterSpacing: 1.2,
             color: theme.colorScheme.primary,
           ),
@@ -62,73 +89,77 @@ class _HomePageState extends State<HomePage> {
                   ? Icons.dark_mode
                   : Icons.light_mode,
               color: theme.colorScheme.onSurface,
+              size: isTablet ? 28 : 24,
             ),
             onPressed: () {
               context.read<ThemeBloc>().add(SwitchThemeEvent());
             },
           ),
-          // Wishlist navigation
+          // Refresh button
+          IconButton(
+            icon: Icon(
+              Icons.refresh,
+              color: theme.colorScheme.onSurface,
+              size: isTablet ? 28 : 24,
+            ),
+            onPressed: _loadProducts,
+          ),
+          // Wishlist button
           IconButton(
             icon: Icon(
               Icons.favorite_border,
-              size: 28,
+              size: isTablet ? 32 : 28,
               color: theme.colorScheme.onSurface,
             ),
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const WishlistPage()),
-              ).then((_) {
-                // Reload products on return to sync favorite states
-                context.read<ProductBloc>().add(FetchProductsEvent(
-                    wishlist: context.read<WishlistBloc>().state
-                            is WishlistLoaded
-                        ? (context.read<WishlistBloc>().state as WishlistLoaded)
-                            .wishlist
-                        : []));
-              });
+              ).then((_) => _loadProducts());
             },
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: isTablet ? 16 : 12),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          // Reload products and wishlist on pull-to-refresh
-          context.read<ProductBloc>().add(FetchProductsEvent(
-              wishlist: context.read<WishlistBloc>().state is WishlistLoaded
-                  ? (context.read<WishlistBloc>().state as WishlistLoaded)
-                      .wishlist
-                  : []));
-          context.read<WishlistBloc>().add(LoadWishlistEvent());
+          _loadProducts();
         },
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Search bar
-              // const CustomTextField(),
-              const SizedBox(height: 20),
-              // Category scroll
-              CategoryScroll(
-                categories: [
-                  "All",
-                  "electronics",
-                  "jewelery",
-                  "men's clothing",
-                  "women's clothing",
-                ],
-                onCategorySelected: (selected) {
-                  setState(() {
-                    selectedCategory = selected;
-                  });
-                },
-              ),
-              const SizedBox(height: 20),
-              // Product grid
-              Expanded(
-                child: BlocBuilder<ProductBloc, ProductState>(
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Padding(
+            padding: EdgeInsets.all(_getHorizontalPadding(context)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Search bar - responsive width
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isTablet ? 600 : double.infinity,
+                  ),
+                  child: const CustomTextField(),
+                ),
+                SizedBox(height: isTablet ? 24 : 20),
+
+                // Category scroll
+                CategoryScroll(
+                  categories: [
+                    "All",
+                    "electronics",
+                    "jewelery",
+                    "men's clothing",
+                    "women's clothing",
+                  ],
+                  onCategorySelected: (selected) {
+                    setState(() {
+                      selectedCategory = selected;
+                    });
+                  },
+                ),
+                SizedBox(height: isTablet ? 24 : 20),
+
+                // Product grid
+                BlocBuilder<ProductBloc, ProductState>(
                   builder: (context, productState) {
                     return BlocBuilder<WishlistBloc, WishlistState>(
                       builder: (context, wishlistState) {
@@ -136,9 +167,13 @@ class _HomePageState extends State<HomePage> {
                         if (wishlistState is WishlistLoaded) {
                           wishlist = wishlistState.wishlist;
                         }
+
                         if (productState is ProductLoading) {
-                          return const Center(
-                              child: CircularProgressIndicator());
+                          return SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.4,
+                            child: const Center(
+                                child: CircularProgressIndicator()),
+                          );
                         } else if (productState is ProductLoaded) {
                           final displayedProducts = selectedCategory == "All"
                               ? productState.products
@@ -146,19 +181,53 @@ class _HomePageState extends State<HomePage> {
                                   .where((product) =>
                                       product.category == selectedCategory)
                                   .toList();
+
+                          if (displayedProducts.isEmpty &&
+                              selectedCategory != "All") {
+                            return SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.4,
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.search_off,
+                                      size: isTablet ? 80 : 64,
+                                      color: theme.colorScheme.onSurface
+                                          .withOpacity(0.5),
+                                    ),
+                                    SizedBox(height: isTablet ? 20 : 16),
+                                    Text(
+                                      "No products found in this category",
+                                      style: TextStyle(
+                                        fontSize: isTablet ? 20 : 18,
+                                        color: theme.colorScheme.onSurface,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
                           return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
                             itemCount: displayedProducts.length,
                             gridDelegate:
                                 SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: _calculateCrossAxisCount(context),
-                              mainAxisSpacing: 12,
-                              crossAxisSpacing: 12,
-                              childAspectRatio: 0.65,
+                              mainAxisSpacing: _getGridSpacing(context),
+                              crossAxisSpacing: _getGridSpacing(context),
+                              childAspectRatio:
+                                  _calculateChildAspectRatio(context),
                             ),
                             itemBuilder: (context, index) {
                               final product = displayedProducts[index];
                               final isFavorite =
                                   wishlist.any((w) => w.id == product.id);
+
                               return ProductCard(
                                 imageUrl: product.imageUrl,
                                 title: product.title,
@@ -166,6 +235,7 @@ class _HomePageState extends State<HomePage> {
                                 price: product.price,
                                 rating: product.rating,
                                 isFavorite: isFavorite,
+                                isTablet: isTablet,
                                 onFavoriteTap: () {
                                   if (isFavorite) {
                                     context.read<WishlistBloc>().add(
@@ -183,44 +253,55 @@ class _HomePageState extends State<HomePage> {
                                       builder: (_) =>
                                           ProductDetailsPage(product: product),
                                     ),
-                                  ).then((_) {
-                                    // Reload products on return to sync favorite states
-                                    context.read<ProductBloc>().add(
-                                        FetchProductsEvent(
-                                            wishlist: context
-                                                    .read<WishlistBloc>()
-                                                    .state is WishlistLoaded
-                                                ? (context
-                                                        .read<WishlistBloc>()
-                                                        .state as WishlistLoaded)
-                                                    .wishlist
-                                                : []));
-                                  });
+                                  ).then((_) => _loadProducts());
                                 },
                               );
                             },
                           );
                         } else if (productState is ProductError) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.cloud_off,
-                                  size: 64,
-                                  color: theme.colorScheme.onSurface
-                                      .withOpacity(0.5),
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  productState.message,
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    color: theme.colorScheme.onSurface,
+                          return SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.4,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.error_outline,
+                                    size: isTablet ? 80 : 64,
+                                    color: theme.colorScheme.error,
                                   ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
+                                  SizedBox(height: isTablet ? 20 : 16),
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: isTablet ? 40 : 20,
+                                    ),
+                                    child: Text(
+                                      productState.message,
+                                      style: TextStyle(
+                                        fontSize: isTablet ? 18 : 16,
+                                        color: theme.colorScheme.onSurface,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                  SizedBox(height: isTablet ? 24 : 20),
+                                  ElevatedButton(
+                                    onPressed: _loadProducts,
+                                    style: ElevatedButton.styleFrom(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: isTablet ? 32 : 24,
+                                        vertical: isTablet ? 16 : 12,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Retry',
+                                      style: TextStyle(
+                                        fontSize: isTablet ? 16 : 14,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         }
@@ -229,8 +310,10 @@ class _HomePageState extends State<HomePage> {
                     );
                   },
                 ),
-              ),
-            ],
+                // Bottom padding for better scroll experience
+                SizedBox(height: isTablet ? 32 : 20),
+              ],
+            ),
           ),
         ),
       ),
