@@ -9,31 +9,59 @@ class RemoteDataSource {
 
   Future<List<Product>> fetchProducts() async {
     try {
-      final response = await client
-          .get(
-            Uri.parse('https://fakestoreapi.com/products'),
-          )
-          .timeout(const Duration(seconds: 15));
+      print('🌐 Fetching products from API...');
+
+      final response = await client.get(
+        Uri.parse('https://fakestoreapi.com/products'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw Exception(
+              'Request timeout: Please check your internet connection');
+        },
+      );
+
+      print('📡 API Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final List<dynamic> jsonList = json.decode(response.body);
-        return jsonList
-            .map((json) => Product(
-                  id: json['id'].toString(),
-                  title: json['title'],
-                  subtitle: json['category'],
-                  price: (json['price'] as num).toDouble(),
-                  imageUrl: json['image'],
-                  description: json['description'],
-                  category: json['category'],
-                  rating: (json['rating']['rate'] as num).toDouble(),
-                ))
-            .toList();
+        print('✅ Successfully fetched ${jsonList.length} products');
+
+        final products = jsonList.map((json) {
+          return Product(
+            id: json['id'].toString(),
+            title: json['title'] ?? 'Unknown Product',
+            subtitle: json['category'] ?? 'Unknown Category',
+            price: (json['price'] as num?)?.toDouble() ?? 0.0,
+            imageUrl: json['image'] ?? 'https://via.placeholder.com/150',
+            description: json['description'] ?? 'No description available',
+            category: json['category'] ?? 'Unknown',
+            rating: (json['rating']?['rate'] as num?)?.toDouble() ?? 0.0,
+          );
+        }).toList();
+
+        print('🎯 Converted ${products.length} products successfully');
+        return products;
       } else {
-        throw Exception('Failed to load products: ${response.statusCode}');
+        print('❌ API Error: ${response.statusCode}');
+        throw Exception(
+            'Failed to load products: Server returned ${response.statusCode}');
       }
     } catch (e) {
-      throw Exception('Network error: $e');
+      print('🚨 Error in fetchProducts: $e');
+
+      if (e.toString().contains('SocketException') ||
+          e.toString().contains('ClientException') ||
+          e.toString().contains('HandshakeException') ||
+          e.toString().contains('timeout')) {
+        throw Exception(
+            'Network error: Please check your internet connection and try again');
+      }
+
+      rethrow;
     }
   }
 }

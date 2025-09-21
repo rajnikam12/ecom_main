@@ -1,5 +1,3 @@
-import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:http/http.dart' as http;
 import '../../domain/entities/product.dart';
 import '../../domain/repositories/product_repository.dart';
 import '../data_sources/remote_data_source.dart';
@@ -14,26 +12,42 @@ class ProductRepositoryImpl implements ProductRepository {
   @override
   Future<List<Product>> getProducts() async {
     try {
-      // Always try to fetch from API first
+      print('🔄 Starting product fetch...');
+
+      // Try to fetch from API first
       final products = await remoteDataSource.fetchProducts();
+      print('✅ API fetch successful: ${products.length} products');
 
-      // Cache products locally for offline use
-      await localDataSource.cacheProducts(products);
-
-      return products;
-    } catch (e) {
-      print('API fetch failed, trying cached products: $e');
-
-      // If API fails, try to get cached products
-      final cachedProducts = await localDataSource.getCachedProducts();
-
-      if (cachedProducts.isNotEmpty) {
-        return cachedProducts;
+      // Cache the products for offline use
+      try {
+        await localDataSource.cacheProducts(products);
+        print('💾 Products cached successfully');
+      } catch (cacheError) {
+        print('⚠️ Cache error (non-critical): $cacheError');
+        // Don't fail the entire operation if caching fails
       }
 
-      // If no cached products, throw error
-      throw Exception(
-          'Unable to load products. Please check your internet connection.');
+      return products;
+    } catch (apiError) {
+      print('🌐 API fetch failed: $apiError');
+      print('📱 Trying to load cached products...');
+
+      try {
+        final cachedProducts = await localDataSource.getCachedProducts();
+
+        if (cachedProducts.isNotEmpty) {
+          print('✅ Loaded ${cachedProducts.length} cached products');
+          return cachedProducts;
+        } else {
+          print('❌ No cached products available');
+          throw Exception(
+              'Unable to load products. Please check your internet connection and try again.');
+        }
+      } catch (cacheError) {
+        print('💥 Cache load failed: $cacheError');
+        throw Exception(
+            'Unable to load products. Please check your internet connection and try again.');
+      }
     }
   }
 }
